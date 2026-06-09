@@ -742,14 +742,32 @@ describe('extension commands', () => {
   });
 
   describe('extensionEnableToastActivation', () => {
-    it('enables toast activation', async () => {
+    it('enables toast activation without explicit CLSID', async () => {
       const windowsDir = createProject();
+      mockQuestion.mockImplementationOnce((_msg: string, cb: (answer: string) => void) => cb(''));
       await extensionEnableToastActivation({ path: tempDir });
 
       const config = JSON.parse(
         fs.readFileSync(path.join(windowsDir, 'bundle.config.json'), 'utf-8')
       );
       expect(config.extensions.toastActivation).toEqual({ activationType: 'foreground' });
+    });
+
+    it('stores explicit CLSID when provided', async () => {
+      const windowsDir = createProject();
+      const clsid = '{12345678-1234-1234-1234-123456789012}';
+      mockQuestion.mockImplementationOnce((_msg: string, cb: (answer: string) => void) =>
+        cb(clsid)
+      );
+      await extensionEnableToastActivation({ path: tempDir });
+
+      const config = JSON.parse(
+        fs.readFileSync(path.join(windowsDir, 'bundle.config.json'), 'utf-8')
+      );
+      expect(config.extensions.toastActivation).toEqual({
+        activationType: 'foreground',
+        clsid,
+      });
     });
 
     it('adds to existing extensions object', async () => {
@@ -765,6 +783,7 @@ describe('extension commands', () => {
         })
       );
 
+      mockQuestion.mockImplementationOnce((_msg: string, cb: (answer: string) => void) => cb(''));
       await extensionEnableToastActivation({ path: tempDir });
 
       const config = JSON.parse(

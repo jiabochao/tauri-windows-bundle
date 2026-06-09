@@ -190,8 +190,8 @@ function generateExtensions(config: MergedConfig): string {
 
   if (config.extensions?.toastActivation) {
     const template = getExtensionTemplate('toast-activation');
-    // Generate a CLSID from the identifier
-    const clsid = generateClsid(config.identifier + '.toast');
+    const clsid =
+      config.extensions.toastActivation.clsid ?? generateClsid(config.identifier + '.toast');
     const result = replaceTemplateVariables(template, {
       CLSID: clsid,
     });

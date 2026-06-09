@@ -88,6 +88,8 @@ export interface AppService {
 
 export interface ToastActivation {
   activationType: 'foreground' | 'background' | 'protocol';
+  /** Explicit toast activator CLSID. When omitted, derived from the app identifier. */
+  clsid?: string;
 }
 
 export interface AutoplayHandler {

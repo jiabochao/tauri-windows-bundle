@@ -267,6 +267,7 @@ Handle toast notification clicks and actions.
 ```bash
 # Enable
 npx @choochmeque/tauri-windows-bundle extension add toast-activation
+# Prompts for: CLSID (leave empty to auto-generate from app identifier)
 
 # Disable
 npx @choochmeque/tauri-windows-bundle extension remove toast-activation

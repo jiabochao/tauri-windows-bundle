@@ -262,6 +262,19 @@ describe('generateManifest', () => {
     expect(manifest).toContain('ToastActivatorCLSID=');
   });
 
+  it('uses explicit toast activator CLSID when provided', () => {
+    const clsid = '{12345678-1234-1234-1234-123456789012}';
+    const config: MergedConfig = {
+      ...mockConfig,
+      extensions: {
+        toastActivation: { activationType: 'foreground', clsid },
+      },
+    };
+    const manifest = generateManifest(config, 'x64', '10.0.17763.0', tempDir);
+
+    expect(manifest).toContain(`ToastActivatorCLSID="${clsid}"`);
+  });
+
   it('includes autoplay content handler', () => {
     const config: MergedConfig = {
       ...mockConfig,

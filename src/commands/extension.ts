@@ -508,11 +508,20 @@ export async function extensionEnableToastActivation(options: ExtensionOptions):
   const windowsDir = getWindowsDir(projectRoot);
   const config = readBundleConfig(windowsDir);
 
+  console.log('\nEnable Toast Activation\n');
+
+  const clsid = await prompt(
+    'CLSID (e.g., {12345678-1234-1234-1234-123456789012}, leave empty to auto-generate): '
+  );
+
   if (!config.extensions) {
     config.extensions = {};
   }
 
   config.extensions.toastActivation = { activationType: 'foreground' };
+  if (clsid) {
+    config.extensions.toastActivation.clsid = clsid;
+  }
 
   writeBundleConfig(windowsDir, config);
   console.log('\nToast Activation enabled. Your app will handle toast notification clicks.');
