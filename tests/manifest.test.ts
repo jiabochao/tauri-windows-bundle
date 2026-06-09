@@ -262,6 +262,24 @@ describe('generateManifest', () => {
     expect(manifest).toContain('ToastActivatorCLSID=');
   });
 
+  it('registers COM server for toast activator with executable + arguments', () => {
+    const config: MergedConfig = {
+      ...mockConfig,
+      displayName: 'My App',
+      extensions: {
+        toastActivation: { activationType: 'foreground' },
+      },
+    };
+    const manifest = generateManifest(config, 'x64', '10.0.17763.0', tempDir);
+
+    expect(manifest).toContain('windows.comServer');
+    expect(manifest).toContain('<com:ExeServer Executable="MyApp.exe"');
+    expect(manifest).toContain('Arguments="-ToastActivated"');
+    expect(manifest).toMatch(
+      /<com:Class Id="[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"/
+    );
+  });
+
   it('uses explicit toast activator CLSID when provided, stripping surrounding braces', () => {
     const clsid = '{12345678-1234-1234-1234-123456789012}';
     const config: MergedConfig = {

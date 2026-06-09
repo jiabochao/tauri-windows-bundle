@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { glob } from 'glob';
 import type { MergedConfig, TauriConfig } from '../types.js';
-import { generateManifest } from './manifest.js';
+import { executableName, generateManifest } from './manifest.js';
 
 // Cargo writes artifacts to $CARGO_TARGET_DIR (resolved against CWD if relative)
 // when set; otherwise to <srcTauriDir>/target. Note: when CARGO_TARGET_DIR is set,
@@ -37,7 +37,7 @@ export function prepareAppxContent(
   fs.mkdirSync(path.join(appxDir, 'Assets'), { recursive: true });
 
   // Copy exe
-  const exeName = `${config.displayName.replace(/\s+/g, '')}.exe`;
+  const exeName = executableName(config);
   const srcExe = path.join(buildDir, exeName);
 
   if (!fs.existsSync(srcExe)) {

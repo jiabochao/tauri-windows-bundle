@@ -52,6 +52,16 @@ export function generateManifestTemplate(windowsDir: string): void {
   fs.writeFileSync(templatePath, template);
 }
 
+/**
+ * Canonical exe filename derived from `displayName`. Used as the binary's name
+ * in the packaged appx root and as the `Executable=` attribute on the main
+ * `<Application>` block plus any extension that references the same binary
+ * (e.g. `com:ExeServer`, `uap3:Extension Category="windows.appExecutionAlias"`).
+ */
+export function executableName(config: Pick<MergedConfig, 'displayName'>): string {
+  return `${config.displayName.replace(/\s+/g, '')}.exe`;
+}
+
 export function generateManifest(
   config: MergedConfig,
   arch: string,
@@ -66,7 +76,7 @@ export function generateManifest(
     DISPLAY_NAME: config.displayName,
     PUBLISHER_DISPLAY_NAME: config.publisherDisplayName,
     MIN_VERSION: minVersion,
-    EXECUTABLE: `${config.displayName.replace(/\s+/g, '')}.exe`,
+    EXECUTABLE: executableName(config),
     DESCRIPTION: config.description || config.displayName,
     EXTENSIONS: generateExtensions(config),
     CAPABILITIES: generateCapabilities(config.capabilities || DEFAULT_CAPABILITIES),
@@ -168,7 +178,7 @@ function generateExtensions(config: MergedConfig): string {
 
   if (config.extensions?.appExecutionAliases) {
     const template = getExtensionTemplate('app-execution-alias');
-    const executable = `${config.displayName.replace(/\s+/g, '')}.exe`;
+    const executable = executableName(config);
     for (const alias of config.extensions.appExecutionAliases) {
       const result = replaceTemplateVariables(template, {
         ALIAS: alias.alias.endsWith('.exe') ? alias.alias : `${alias.alias}.exe`,
@@ -197,6 +207,7 @@ function generateExtensions(config: MergedConfig): string {
     ).replace(/[{}]/g, '');
     const result = replaceTemplateVariables(template, {
       CLSID: clsid,
+      EXECUTABLE: executableName(config),
     });
     extensions.push(result.trimEnd());
   }

@@ -262,7 +262,7 @@ npx @choochmeque/tauri-windows-bundle extension add app-service
 
 ### Toast Activation
 
-Handle toast notification clicks and actions.
+Handle toast notification clicks and actions, including cold-start activations from Action Center after the app has exited.
 
 ```bash
 # Enable
@@ -272,6 +272,8 @@ npx @choochmeque/tauri-windows-bundle extension add toast-activation
 # Disable
 npx @choochmeque/tauri-windows-bundle extension remove toast-activation
 ```
+
+Emits both the `com:Extension Category="windows.comServer"` (so Windows knows which exe to launch on activation) and the `desktop:Extension Category="windows.toastNotificationActivation"` (binding the toast click to the CLSID).
 
 ### Autoplay
 

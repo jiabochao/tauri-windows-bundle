@@ -1,3 +1,10 @@
+      <com:Extension Category="windows.comServer">
+        <com:ComServer>
+          <com:ExeServer Executable="{{EXECUTABLE}}" Arguments="-ToastActivated" DisplayName="Toast activator">
+            <com:Class Id="{{CLSID}}" DisplayName="Toast activator" />
+          </com:ExeServer>
+        </com:ComServer>
+      </com:Extension>
       <desktop:Extension Category="windows.toastNotificationActivation">
         <desktop:ToastNotificationActivation ToastActivatorCLSID="{{CLSID}}" />
       </desktop:Extension>
