@@ -1,17 +1,17 @@
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { BuildOptions, MergedConfig } from '../types.js';
 import { DEFAULT_MIN_WINDOWS_VERSION, DEFAULT_RUNNER, validateCapabilities } from '../types.js';
 import {
   findProjectRoot,
-  readTauriConfig,
-  readTauriWindowsConfig,
+  readMergedWindowsTauriConfig,
   readBundleConfig,
   getWindowsDir,
   resolveVersion,
   toFourPartVersion,
 } from '../core/project-discovery.js';
-import { jsonMergePatch } from '../utils/merge.js';
 import { prepareAppxContent, resolveCargoTargetDir } from '../core/appx-content.js';
+import { generateAssets } from '../generators/assets.js';
 import {
   spawnAsync,
   execWithProgress,
@@ -87,12 +87,8 @@ export async function build(options: BuildOptions): Promise<void> {
   const projectRoot = findProjectRoot();
   const windowsDir = getWindowsDir(projectRoot);
 
-  // Read configs
-  let tauriConfig = readTauriConfig(projectRoot);
-  const windowsConfig = readTauriWindowsConfig(projectRoot);
-  if (windowsConfig) {
-    tauriConfig = jsonMergePatch(tauriConfig, windowsConfig);
-  }
+  // Read configs (tauri.conf.json merged with tauri.windows.conf.json)
+  const tauriConfig = readMergedWindowsTauriConfig(projectRoot);
   const bundleConfig = readBundleConfig(windowsDir);
 
   // Validate capabilities
@@ -137,6 +133,14 @@ export async function build(options: BuildOptions): Promise<void> {
   const appxDirs: { arch: string; dir: string }[] = [];
 
   const runner = options.runner || DEFAULT_RUNNER;
+  const windowsConfigPath = path.join(projectRoot, 'src-tauri', 'tauri.windows.conf.json');
+  const tauriConfigFlag = fs.existsSync(windowsConfigPath)
+    ? '--config src-tauri/tauri.windows.conf.json'
+    : '';
+
+  // Refresh MSIX assets from the resolved Windows icon set before packaging
+  console.log('Syncing MSIX assets...');
+  await generateAssets(windowsDir, projectRoot, undefined, tauriConfig);
 
   for (const arch of architectures) {
     // Build Tauri app
@@ -149,10 +153,12 @@ export async function build(options: BuildOptions): Promise<void> {
     let buildCommand: string;
     if (runner === 'npm') {
       // npm requires -- to pass args to the script
-      buildCommand = `npm run tauri build -- --target ${target} --no-bundle ${debugFlag}`.trim();
+      buildCommand =
+        `npm run tauri build -- --target ${target} --no-bundle ${tauriConfigFlag} ${debugFlag}`.trim();
     } else {
       // cargo, pnpm, yarn, bun, etc.
-      buildCommand = `${runner} tauri build --target ${target} --no-bundle ${debugFlag}`.trim();
+      buildCommand =
+        `${runner} tauri build --target ${target} --no-bundle ${tauriConfigFlag} ${debugFlag}`.trim();
     }
 
     try {

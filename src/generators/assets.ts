@@ -1,8 +1,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Image, read, write } from 'image-js';
+import { resolveIconsDir, iconsDirLabel, resolveVariantSourcePath } from '../core/icons.js';
 import { MSIX_ASSETS, SCALE_FACTORS, TARGET_SIZES } from '../types.js';
-import type { VariantOptions } from '../types.js';
+import type { TauriConfig, VariantOptions } from '../types.js';
 
 // Map MSIX asset names to Tauri icon names
 const TAURI_ICON_MAP: Record<string, string> = {
@@ -11,21 +12,16 @@ const TAURI_ICON_MAP: Record<string, string> = {
   'Square150x150Logo.png': 'Square150x150Logo.png',
 };
 
-const VARIANT_SOURCE_CANDIDATES = ['icon.png', 'Square310x310Logo.png', '128x128.png'];
-
-function getTauriIconsDir(projectRoot: string): string {
-  return path.join(projectRoot, 'src-tauri', 'icons');
-}
-
 export async function generateAssets(
   windowsDir: string,
   projectRoot?: string,
-  variants?: VariantOptions
+  variants?: VariantOptions,
+  tauriConfig?: TauriConfig
 ): Promise<boolean> {
   const assetsDir = path.join(windowsDir, 'Assets');
   fs.mkdirSync(assetsDir, { recursive: true });
 
-  const tauriIconsDir = projectRoot ? getTauriIconsDir(projectRoot) : null;
+  const tauriIconsDir = projectRoot ? resolveIconsDir(projectRoot, tauriConfig) : null;
   let copiedFromTauri = false;
 
   for (const asset of MSIX_ASSETS) {
@@ -42,13 +38,19 @@ export async function generateAssets(
       fs.copyFileSync(tauriIconPath, assetPath);
       copiedFromTauri = true;
     } else if (asset.name === 'Wide310x150Logo.png' && tauriIconsDir) {
-      // Generate wide tile from square icon
-      const generated = await generateWideTile(tauriIconsDir, assetPath);
-      if (!generated) {
-        const pngData = createPlaceholderPng(width, height);
-        fs.writeFileSync(assetPath, pngData);
-      } else {
+      const wideTileSource = path.join(tauriIconsDir, 'Wide310x150Logo.png');
+      if (fs.existsSync(wideTileSource)) {
+        fs.copyFileSync(wideTileSource, assetPath);
         copiedFromTauri = true;
+      } else {
+        // Generate wide tile from square icon
+        const generated = await generateWideTile(tauriIconsDir, assetPath);
+        if (!generated) {
+          const pngData = createPlaceholderPng(width, height);
+          fs.writeFileSync(assetPath, pngData);
+        } else {
+          copiedFromTauri = true;
+        }
       }
     } else {
       // Fall back to placeholder
@@ -57,8 +59,8 @@ export async function generateAssets(
     }
   }
 
-  if (copiedFromTauri) {
-    console.log('  Copied assets from src-tauri/icons');
+  if (copiedFromTauri && tauriIconsDir && projectRoot) {
+    console.log(`  Copied assets from ${iconsDirLabel(tauriIconsDir, projectRoot)}`);
   } else {
     console.log('  Generated placeholder assets - replace with real icons before publishing');
   }
@@ -67,11 +69,9 @@ export async function generateAssets(
     variants &&
     (variants.scale || variants.targetSize || variants.unplated || variants.lightUnplated)
   ) {
-    const sourcePath = resolveVariantSource(tauriIconsDir);
+    const sourcePath = projectRoot ? resolveVariantSourcePath(projectRoot, tauriConfig) : null;
     if (!sourcePath) {
-      console.log(
-        `  Skipping variants: no suitable source icon found (looked for ${VARIANT_SOURCE_CANDIDATES.join(', ')})`
-      );
+      console.log('  Skipping variants: no suitable source icon found in bundle.icon');
     } else {
       console.log(`  Generating variants from ${path.basename(sourcePath)}`);
       if (variants.scale) {
@@ -94,15 +94,6 @@ export async function generateAssets(
   }
 
   return copiedFromTauri;
-}
-
-function resolveVariantSource(tauriIconsDir: string | null): string | null {
-  if (!tauriIconsDir) return null;
-  for (const name of VARIANT_SOURCE_CANDIDATES) {
-    const candidate = path.join(tauriIconsDir, name);
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return null;
 }
 
 function variantFilename(baseName: string, suffix: string): string {
