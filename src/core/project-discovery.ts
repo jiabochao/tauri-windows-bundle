@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { TauriConfig, BundleConfig } from '../types.js';
+import { jsonMergePatch } from '../utils/merge.js';
 
 export function findProjectRoot(startDir?: string): string {
   let dir = startDir || process.cwd();
@@ -85,6 +86,16 @@ export function readBundleConfig(windowsDir: string): BundleConfig {
 
 export function getWindowsDir(projectRoot: string): string {
   return path.join(projectRoot, 'src-tauri', 'gen', 'windows');
+}
+
+/** Merged `tauri.conf.json` + `tauri.windows.conf.json` (RFC 7396), matching Tauri CLI. */
+export function readMergedWindowsTauriConfig(projectRoot: string): TauriConfig {
+  let tauriConfig = readTauriConfig(projectRoot);
+  const windowsConfig = readTauriWindowsConfig(projectRoot);
+  if (windowsConfig) {
+    tauriConfig = jsonMergePatch(tauriConfig, windowsConfig);
+  }
+  return tauriConfig;
 }
 
 export function resolveVersion(version: string, tauriConfigDir: string): string {

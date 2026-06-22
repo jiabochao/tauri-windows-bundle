@@ -77,6 +77,44 @@ describe('generateAssets', () => {
     }
   });
 
+  it('copies icons from bundle.icon directory when configured over root icons', async () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tauri-project-'));
+    const iconsDir = path.join(projectRoot, 'src-tauri', 'icons');
+    const windowsIconsDir = path.join(iconsDir, 'windows');
+    fs.mkdirSync(windowsIconsDir, { recursive: true });
+
+    const macPng = createTestPng(50, 50);
+    const winPng = createTestPng(50, 50);
+    winPng[winPng.length - 1] = (winPng[winPng.length - 1] + 1) % 256;
+
+    fs.writeFileSync(path.join(iconsDir, 'StoreLogo.png'), macPng);
+    fs.writeFileSync(path.join(windowsIconsDir, 'StoreLogo.png'), winPng);
+    fs.writeFileSync(path.join(windowsIconsDir, 'Square44x44Logo.png'), createTestPng(44, 44));
+    fs.writeFileSync(path.join(windowsIconsDir, 'Square150x150Logo.png'), createTestPng(150, 150));
+
+    const tauriConfig = {
+      bundle: {
+        icon: [
+          'icons/windows/StoreLogo.png',
+          'icons/windows/Square44x44Logo.png',
+          'icons/windows/Square150x150Logo.png',
+          'icons/windows/icon.ico',
+        ],
+      },
+    };
+
+    try {
+      const result = await generateAssets(tempDir, projectRoot, undefined, tauriConfig);
+      expect(result).toBe(true);
+
+      const copied = fs.readFileSync(path.join(tempDir, 'Assets', 'StoreLogo.png'));
+      expect(copied.equals(winPng)).toBe(true);
+      expect(copied.equals(macPng)).toBe(false);
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it('copies icons from src-tauri/icons when available', async () => {
     const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tauri-project-'));
     const iconsDir = path.join(projectRoot, 'src-tauri', 'icons');
