@@ -159,6 +159,84 @@ describe('init command', () => {
     expect(pkg.scripts['tauri:windows:build']).toBe('tauri-windows-bundle build');
   });
 
+  it('merges tauri.windows.conf.json bundle.icon for asset generation', async () => {
+    const srcTauri = path.join(tempDir, 'src-tauri');
+    const winIconsDir = path.join(srcTauri, 'icons', 'windows');
+    const defaultIconsDir = path.join(srcTauri, 'icons');
+    fs.mkdirSync(winIconsDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(srcTauri, 'tauri.conf.json'),
+      JSON.stringify({
+        productName: 'TestApp',
+        version: '1.0.0',
+        bundle: {
+          icon: ['icons/32x32.png', 'icons/icon.ico'],
+        },
+      })
+    );
+    fs.writeFileSync(
+      path.join(srcTauri, 'tauri.windows.conf.json'),
+      JSON.stringify({
+        bundle: {
+          icon: ['icons/windows/32x32.png', 'icons/windows/icon.ico'],
+        },
+      })
+    );
+    fs.writeFileSync(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify({ name: 'test', scripts: {} })
+    );
+
+    const winPng = createMinimalPng();
+    const defaultPng = Buffer.concat([createMinimalPng(), Buffer.from([0])]); // distinct content
+    fs.writeFileSync(path.join(winIconsDir, 'StoreLogo.png'), winPng);
+    fs.writeFileSync(path.join(winIconsDir, 'Square44x44Logo.png'), winPng);
+    fs.writeFileSync(path.join(winIconsDir, 'Square150x150Logo.png'), winPng);
+    fs.writeFileSync(path.join(defaultIconsDir, 'StoreLogo.png'), defaultPng);
+
+    await init({ path: tempDir });
+
+    const generated = fs.readFileSync(
+      path.join(srcTauri, 'gen', 'windows', 'Assets', 'StoreLogo.png')
+    );
+    expect(generated.equals(winPng)).toBe(true);
+    expect(generated.equals(defaultPng)).toBe(false);
+  });
+
+  it('persists variants to bundle.config.json when --all-variants is requested', async () => {
+    createTauriProject();
+    await init({ path: tempDir, allVariants: true });
+
+    const config = JSON.parse(
+      fs.readFileSync(
+        path.join(tempDir, 'src-tauri', 'gen', 'windows', 'bundle.config.json'),
+        'utf-8'
+      )
+    );
+    expect(config.assets).toEqual({
+      variants: {
+        scale: true,
+        targetSize: true,
+        unplated: true,
+        lightUnplated: true,
+      },
+    });
+  });
+
+  it('omits assets section when no variants requested', async () => {
+    createTauriProject();
+    await init({ path: tempDir });
+
+    const config = JSON.parse(
+      fs.readFileSync(
+        path.join(tempDir, 'src-tauri', 'gen', 'windows', 'bundle.config.json'),
+        'utf-8'
+      )
+    );
+    expect(config.assets).toBeUndefined();
+  });
+
   it('shows shorter next steps when assets are copied from icons', async () => {
     const srcTauri = path.join(tempDir, 'src-tauri');
     const iconsDir = path.join(srcTauri, 'icons');
@@ -256,3 +334,14 @@ describe('init command', () => {
     );
   });
 });
+
+function createMinimalPng(): Buffer {
+  // Minimal 1x1 PNG. Same bytes the existing "shows shorter next steps" test uses.
+  return Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+    0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, 0x54, 0x08, 0xd7, 0x63, 0xf8, 0xff, 0xff, 0x3f,
+    0x00, 0x05, 0xfe, 0x02, 0xfe, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60,
+    0x82,
+  ]);
+}

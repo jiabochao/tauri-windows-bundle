@@ -27,6 +27,9 @@ export interface BundleConfig {
     enabled?: boolean;
     keepConfig?: boolean;
   };
+  assets?: {
+    variants?: VariantOptions;
+  };
   capabilities?: CapabilitiesConfig;
   extensions?: {
     shareTarget?: boolean;
@@ -147,6 +150,7 @@ export interface BuildOptions {
   minWindows?: string;
   runner?: string;
   verbose?: boolean;
+  regenerateAssets?: boolean;
 }
 
 export const DEFAULT_RUNNER = 'cargo';

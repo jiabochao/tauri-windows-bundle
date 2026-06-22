@@ -199,6 +199,12 @@ describe('cli', () => {
       expect(build).toHaveBeenCalledWith({ arch: 'x64', debug: true });
     });
 
+    it('passes --regenerate-assets through to build', async () => {
+      const { build } = await import('../src/commands/build.js');
+      await actionHandlers['build']({ regenerateAssets: true });
+      expect(build).toHaveBeenCalledWith({ regenerateAssets: true });
+    });
+
     it('handles Error', async () => {
       const { build } = await import('../src/commands/build.js');
       vi.mocked(build).mockRejectedValueOnce(new Error('Build error'));

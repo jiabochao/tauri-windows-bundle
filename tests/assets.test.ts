@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { generateAssets } from '../src/generators/assets.js';
+import { generateAssets, resolveTauriIconsDir } from '../src/generators/assets.js';
 import { MSIX_ASSETS } from '../src/types.js';
 
 describe('generateAssets', () => {
@@ -147,6 +147,157 @@ describe('generateAssets', () => {
   it('does not generate LargeTile.png', async () => {
     await generateAssets(tempDir);
     expect(fs.existsSync(path.join(tempDir, 'Assets', 'LargeTile.png'))).toBe(false);
+  });
+
+  it('honors bundle.icon dir over default src-tauri/icons', async () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tauri-project-'));
+    const windowsIconsDir = path.join(projectRoot, 'src-tauri', 'icons', 'windows');
+    const defaultIconsDir = path.join(projectRoot, 'src-tauri', 'icons');
+    fs.mkdirSync(windowsIconsDir, { recursive: true });
+
+    const winPng = createTestPng(150, 150);
+    const defaultPng = createTestPng(44, 44);
+    fs.writeFileSync(path.join(windowsIconsDir, 'Square150x150Logo.png'), winPng);
+    fs.writeFileSync(path.join(defaultIconsDir, 'Square150x150Logo.png'), defaultPng);
+
+    try {
+      const result = await generateAssets(tempDir, projectRoot, undefined, [
+        'icons/windows/32x32.png',
+        'icons/windows/icon.ico',
+      ]);
+      expect(result).toBe(true);
+
+      const copied = fs.readFileSync(path.join(tempDir, 'Assets', 'Square150x150Logo.png'));
+      expect(copied.equals(winPng)).toBe(true);
+      expect(copied.equals(defaultPng)).toBe(false);
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to src-tauri/icons when bundle.icon has no .png entries', async () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tauri-project-'));
+    const iconsDir = path.join(projectRoot, 'src-tauri', 'icons');
+    fs.mkdirSync(iconsDir, { recursive: true });
+    const testPng = createTestPng(50, 50);
+    fs.writeFileSync(path.join(iconsDir, 'StoreLogo.png'), testPng);
+
+    try {
+      const result = await generateAssets(tempDir, projectRoot, undefined, [
+        'icons/windows/icon.ico',
+        'icons/windows/icon.icns',
+      ]);
+      expect(result).toBe(true);
+
+      const copied = fs.readFileSync(path.join(tempDir, 'Assets', 'StoreLogo.png'));
+      expect(copied.equals(testPng)).toBe(true);
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to placeholder when resolved bundle.icon dir lacks a specific logo', async () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tauri-project-'));
+    const winDir = path.join(projectRoot, 'src-tauri', 'icons', 'windows');
+    fs.mkdirSync(winDir, { recursive: true });
+    // Only StoreLogo present — Square44x44Logo and Square150x150Logo will be placeholders
+    fs.writeFileSync(path.join(winDir, 'StoreLogo.png'), createTestPng(50, 50));
+
+    try {
+      const result = await generateAssets(tempDir, projectRoot, undefined, [
+        'icons/windows/32x32.png',
+      ]);
+      expect(result).toBe(true);
+
+      const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+      const sq44 = fs.readFileSync(path.join(tempDir, 'Assets', 'Square44x44Logo.png'));
+      expect(sq44.subarray(0, 8).equals(pngSignature)).toBe(true);
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('generates wide tile from bundle.icon dir source', async () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tauri-project-'));
+    const winDir = path.join(projectRoot, 'src-tauri', 'icons', 'windows');
+    fs.mkdirSync(winDir, { recursive: true });
+    fs.writeFileSync(path.join(winDir, 'Square150x150Logo.png'), createTestPng(150, 150));
+
+    try {
+      await generateAssets(tempDir, projectRoot, undefined, ['icons/windows/icon.png']);
+
+      const wide = fs.readFileSync(path.join(tempDir, 'Assets', 'Wide310x150Logo.png'));
+      expect(wide.readUInt32BE(16)).toBe(310);
+      expect(wide.readUInt32BE(20)).toBe(150);
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves variant source from bundle.icon dir', async () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tauri-project-'));
+    const winDir = path.join(projectRoot, 'src-tauri', 'icons', 'windows');
+    fs.mkdirSync(winDir, { recursive: true });
+    fs.writeFileSync(path.join(winDir, 'icon.png'), createTestPng(310, 310));
+
+    try {
+      await generateAssets(tempDir, projectRoot, { scale: true }, [
+        'icons/windows/icon.png',
+        'icons/windows/icon.ico',
+      ]);
+
+      expect(fs.existsSync(path.join(tempDir, 'Assets', 'Square150x150Logo.scale-100.png'))).toBe(
+        true
+      );
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('resolveTauriIconsDir', () => {
+  const projectRoot = '/tmp/fake-project';
+  const srcTauriDir = path.join(projectRoot, 'src-tauri');
+
+  it('returns default src-tauri/icons when bundleIcon is undefined', () => {
+    expect(resolveTauriIconsDir(projectRoot)).toBe(path.join(srcTauriDir, 'icons'));
+  });
+
+  it('returns default src-tauri/icons when bundleIcon is empty', () => {
+    expect(resolveTauriIconsDir(projectRoot, [])).toBe(path.join(srcTauriDir, 'icons'));
+  });
+
+  it('returns default src-tauri/icons when bundleIcon has no .png entries', () => {
+    expect(resolveTauriIconsDir(projectRoot, ['icons/icon.ico', 'icons/icon.icns'])).toBe(
+      path.join(srcTauriDir, 'icons')
+    );
+  });
+
+  it('returns dirname of first .png entry resolved against src-tauri/', () => {
+    expect(
+      resolveTauriIconsDir(projectRoot, ['icons/windows/32x32.png', 'icons/windows/icon.ico'])
+    ).toBe(path.join(srcTauriDir, 'icons/windows'));
+  });
+
+  it('skips non-png entries to find the first .png', () => {
+    expect(
+      resolveTauriIconsDir(projectRoot, [
+        'icons/icon.icns',
+        'icons/icon.ico',
+        'icons/win/32x32.png',
+      ])
+    ).toBe(path.join(srcTauriDir, 'icons/win'));
+  });
+
+  it('preserves absolute paths', () => {
+    const abs = path.resolve('/abs/path/icons/32x32.png');
+    expect(resolveTauriIconsDir(projectRoot, [abs])).toBe(path.dirname(abs));
+  });
+
+  it('is case-insensitive on .png extension', () => {
+    expect(resolveTauriIconsDir(projectRoot, ['icons/X.PNG'])).toBe(
+      path.join(srcTauriDir, 'icons')
+    );
   });
 });
 

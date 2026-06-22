@@ -111,6 +111,37 @@ describe('generateBundleConfig', () => {
     const config = JSON.parse(fs.readFileSync(path.join(tempDir, 'bundle.config.json'), 'utf-8'));
     expect(config.resourceIndex.enabled).toBe(false);
   });
+
+  it('persists assets.variants when any variant is requested', () => {
+    const tauriConfig: TauriConfig = {};
+    generateBundleConfig(tempDir, tauriConfig, { scale: true, targetSize: true });
+
+    const config = JSON.parse(fs.readFileSync(path.join(tempDir, 'bundle.config.json'), 'utf-8'));
+    expect(config.assets).toEqual({
+      variants: {
+        scale: true,
+        targetSize: true,
+        unplated: false,
+        lightUnplated: false,
+      },
+    });
+  });
+
+  it('omits assets section when no variant flags are set', () => {
+    const tauriConfig: TauriConfig = {};
+    generateBundleConfig(tempDir, tauriConfig, {});
+
+    const config = JSON.parse(fs.readFileSync(path.join(tempDir, 'bundle.config.json'), 'utf-8'));
+    expect(config.assets).toBeUndefined();
+  });
+
+  it('omits assets section when variants param is undefined', () => {
+    const tauriConfig: TauriConfig = {};
+    generateBundleConfig(tempDir, tauriConfig);
+
+    const config = JSON.parse(fs.readFileSync(path.join(tempDir, 'bundle.config.json'), 'utf-8'));
+    expect(config.assets).toBeUndefined();
+  });
 });
 
 describe('generateGitignore', () => {

@@ -12,6 +12,7 @@ import {
 } from '../core/project-discovery.js';
 import { jsonMergePatch } from '../utils/merge.js';
 import { prepareAppxContent, resolveCargoTargetDir } from '../core/appx-content.js';
+import { generateAssets } from '../generators/assets.js';
 import {
   spawnAsync,
   execWithProgress,
@@ -130,6 +131,18 @@ export async function build(options: BuildOptions): Promise<void> {
     publisher,
     publisherDisplayName,
   };
+
+  // Regenerate Assets from tauriConfig.bundle.icon when requested.
+  // Overwrites manual edits in `gen/windows/Assets/`.
+  if (options.regenerateAssets) {
+    console.log('Regenerating Assets/ from bundle.icon...');
+    await generateAssets(
+      windowsDir,
+      projectRoot,
+      bundleConfig.assets?.variants,
+      tauriConfig.bundle?.icon
+    );
+  }
 
   // Architectures from CLI flag
   const architectures = options.arch?.split(',') || ['x64'];

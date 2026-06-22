@@ -1070,6 +1070,120 @@ describe('build command', () => {
     expect(processExitSpy).toHaveBeenCalledWith(1);
   });
 
+  it('preserves manual Assets/ edits when --regenerate-assets is not set', async () => {
+    const projectDir = createFullProject();
+    const srcTauri = path.join(projectDir, 'src-tauri');
+    const winAssetsDir = path.join(srcTauri, 'gen', 'windows', 'Assets');
+    fs.mkdirSync(winAssetsDir, { recursive: true });
+    const manualBytes = Buffer.from('MANUAL_EDIT_SENTINEL');
+    fs.writeFileSync(path.join(winAssetsDir, 'Square150x150Logo.png'), manualBytes);
+
+    // bundle.icon points at a *different* directory so a regen would yield different content.
+    fs.writeFileSync(
+      path.join(srcTauri, 'tauri.windows.conf.json'),
+      JSON.stringify({ bundle: { icon: ['icons/windows/32x32.png'] } })
+    );
+    const winIconsDir = path.join(srcTauri, 'icons', 'windows');
+    fs.mkdirSync(winIconsDir, { recursive: true });
+    fs.writeFileSync(path.join(winIconsDir, 'Square150x150Logo.png'), createTestPng(150, 150));
+
+    const originalCwd = process.cwd();
+    process.chdir(tempDir);
+
+    try {
+      await build({});
+    } catch {
+      // Expected
+    }
+
+    process.chdir(originalCwd);
+
+    const appxAsset = path.join(
+      srcTauri,
+      'target',
+      'appx',
+      'x64',
+      'Assets',
+      'Square150x150Logo.png'
+    );
+    expect(fs.existsSync(appxAsset)).toBe(true);
+    expect(fs.readFileSync(appxAsset).equals(manualBytes)).toBe(true);
+  });
+
+  it('regenerates Assets/ from bundle.icon when --regenerate-assets is set', async () => {
+    const projectDir = createFullProject();
+    const srcTauri = path.join(projectDir, 'src-tauri');
+    const winAssetsDir = path.join(srcTauri, 'gen', 'windows', 'Assets');
+    fs.mkdirSync(winAssetsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(winAssetsDir, 'Square150x150Logo.png'),
+      Buffer.from('MANUAL_EDIT_SENTINEL')
+    );
+
+    fs.writeFileSync(
+      path.join(srcTauri, 'tauri.windows.conf.json'),
+      JSON.stringify({ bundle: { icon: ['icons/windows/32x32.png'] } })
+    );
+    const winIconsDir = path.join(srcTauri, 'icons', 'windows');
+    fs.mkdirSync(winIconsDir, { recursive: true });
+    const newPng = createTestPng(150, 150);
+    fs.writeFileSync(path.join(winIconsDir, 'Square150x150Logo.png'), newPng);
+
+    const originalCwd = process.cwd();
+    process.chdir(tempDir);
+
+    try {
+      await build({ regenerateAssets: true });
+    } catch {
+      // Expected
+    }
+
+    process.chdir(originalCwd);
+
+    const appxAsset = path.join(
+      srcTauri,
+      'target',
+      'appx',
+      'x64',
+      'Assets',
+      'Square150x150Logo.png'
+    );
+    expect(fs.existsSync(appxAsset)).toBe(true);
+    expect(fs.readFileSync(appxAsset).equals(newPng)).toBe(true);
+  });
+
+  it('uses persisted variants from bundle.config.json when regenerating', async () => {
+    const projectDir = createFullProject();
+    const srcTauri = path.join(projectDir, 'src-tauri');
+    const windowsDir = path.join(srcTauri, 'gen', 'windows');
+    fs.writeFileSync(
+      path.join(windowsDir, 'bundle.config.json'),
+      JSON.stringify({
+        publisher: 'CN=TestCompany',
+        publisherDisplayName: 'Test Company',
+        capabilities: { general: ['internetClient'] },
+        assets: { variants: { scale: true } },
+      })
+    );
+    const iconsDir = path.join(srcTauri, 'icons');
+    fs.mkdirSync(iconsDir, { recursive: true });
+    fs.writeFileSync(path.join(iconsDir, 'icon.png'), createTestPng(310, 310));
+
+    const originalCwd = process.cwd();
+    process.chdir(tempDir);
+
+    try {
+      await build({ regenerateAssets: true });
+    } catch {
+      // Expected
+    }
+
+    process.chdir(originalCwd);
+
+    const assetsDir = path.join(windowsDir, 'Assets');
+    expect(fs.existsSync(path.join(assetsDir, 'Square150x150Logo.scale-100.png'))).toBe(true);
+  });
+
   it('uses publisher as publisherDisplayName fallback', async () => {
     const projectDir = createFullProject();
     const srcTauri = path.join(projectDir, 'src-tauri');
@@ -1104,3 +1218,91 @@ describe('build command', () => {
     expect(manifest).toContain('<PublisherDisplayName>CN=TestCompany</PublisherDisplayName>');
   });
 });
+
+function createTestPng(width: number, height: number): Buffer {
+  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+
+  const ihdrData = Buffer.alloc(13);
+  ihdrData.writeUInt32BE(width, 0);
+  ihdrData.writeUInt32BE(height, 4);
+  ihdrData.writeUInt8(8, 8);
+  ihdrData.writeUInt8(2, 9);
+  ihdrData.writeUInt8(0, 10);
+  ihdrData.writeUInt8(0, 11);
+  ihdrData.writeUInt8(0, 12);
+  const ihdrChunk = createChunk('IHDR', ihdrData);
+
+  const rawData: number[] = [];
+  for (let y = 0; y < height; y++) {
+    rawData.push(0);
+    for (let x = 0; x < width; x++) {
+      rawData.push(128, 128, 128);
+    }
+  }
+
+  const uncompressed = Buffer.from(rawData);
+  const compressed = deflateStore(uncompressed);
+  const idatChunk = createChunk('IDAT', compressed);
+
+  const iendChunk = createChunk('IEND', Buffer.alloc(0));
+
+  return Buffer.concat([signature, ihdrChunk, idatChunk, iendChunk]);
+}
+
+function createChunk(type: string, data: Buffer): Buffer {
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length, 0);
+  const typeBuffer = Buffer.from(type, 'ascii');
+  const crcData = Buffer.concat([typeBuffer, data]);
+  const crc = crc32(crcData);
+  const crcBuffer = Buffer.alloc(4);
+  crcBuffer.writeUInt32BE(crc >>> 0, 0);
+  return Buffer.concat([length, typeBuffer, data, crcBuffer]);
+}
+
+function deflateStore(data: Buffer): Buffer {
+  const result: number[] = [0x78, 0x01];
+  let remaining = data.length;
+  let offset = 0;
+  while (remaining > 0) {
+    const blockSize = Math.min(remaining, 65535);
+    const isLast = remaining <= 65535;
+    result.push(isLast ? 0x01 : 0x00);
+    result.push(blockSize & 0xff);
+    result.push((blockSize >> 8) & 0xff);
+    result.push(~blockSize & 0xff);
+    result.push((~blockSize >> 8) & 0xff);
+    for (let i = 0; i < blockSize; i++) {
+      result.push(data[offset + i]);
+    }
+    offset += blockSize;
+    remaining -= blockSize;
+  }
+  const adler = adler32(data);
+  result.push((adler >> 24) & 0xff);
+  result.push((adler >> 16) & 0xff);
+  result.push((adler >> 8) & 0xff);
+  result.push(adler & 0xff);
+  return Buffer.from(result);
+}
+
+function crc32(data: Buffer): number {
+  let crc = 0xffffffff;
+  for (let i = 0; i < data.length; i++) {
+    crc ^= data[i];
+    for (let j = 0; j < 8; j++) {
+      crc = crc & 1 ? (crc >>> 1) ^ 0xedb88320 : crc >>> 1;
+    }
+  }
+  return crc ^ 0xffffffff;
+}
+
+function adler32(data: Buffer): number {
+  let a = 1;
+  let b = 0;
+  for (let i = 0; i < data.length; i++) {
+    a = (a + data[i]) % 65521;
+    b = (b + a) % 65521;
+  }
+  return (b << 16) | a;
+}

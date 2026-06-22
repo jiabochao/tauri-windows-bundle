@@ -60,6 +60,10 @@ program
   .option('--min-windows <version>', 'Minimum Windows version', '10.0.17763.0')
   .option('--runner <runner>', 'Build runner (cargo, pnpm, npm, yarn, etc.)', 'cargo')
   .option('--verbose', 'Show full build output instead of spinner')
+  .option(
+    '--regenerate-assets',
+    'Regenerate gen/windows/Assets/ from tauri.conf.json bundle.icon (overwrites manual edits)'
+  )
   .action(async (options) => {
     try {
       await build(options);

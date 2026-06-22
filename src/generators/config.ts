@@ -32,6 +32,17 @@ export function generateBundleConfig(
     },
   };
 
+  if (variantsRequested) {
+    config.assets = {
+      variants: {
+        scale: !!variants?.scale,
+        targetSize: !!variants?.targetSize,
+        unplated: !!variants?.unplated,
+        lightUnplated: !!variants?.lightUnplated,
+      },
+    };
+  }
+
   const configPath = path.join(windowsDir, 'bundle.config.json');
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
 }

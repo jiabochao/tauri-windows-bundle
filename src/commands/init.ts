@@ -1,7 +1,13 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { InitOptions, VariantOptions } from '../types.js';
-import { findProjectRoot, readTauriConfig, getWindowsDir } from '../core/project-discovery.js';
+import {
+  findProjectRoot,
+  readTauriConfig,
+  readTauriWindowsConfig,
+  getWindowsDir,
+} from '../core/project-discovery.js';
+import { jsonMergePatch } from '../utils/merge.js';
 import { generateBundleConfig, generateGitignore } from '../generators/config.js';
 import { generateAssets } from '../generators/assets.js';
 import { generateManifestTemplate, getPackageVersion } from '../core/manifest.js';
@@ -10,7 +16,11 @@ export async function init(options: InitOptions): Promise<void> {
   console.log('Initializing Windows bundle configuration...\n');
 
   const projectRoot = findProjectRoot(options.path);
-  const tauriConfig = readTauriConfig(projectRoot);
+  let tauriConfig = readTauriConfig(projectRoot);
+  const windowsConfig = readTauriWindowsConfig(projectRoot);
+  if (windowsConfig) {
+    tauriConfig = jsonMergePatch(tauriConfig, windowsConfig);
+  }
   const windowsDir = getWindowsDir(projectRoot);
 
   const variants: VariantOptions = {
@@ -37,7 +47,12 @@ export async function init(options: InitOptions): Promise<void> {
   console.log('  Created AppxManifest.xml.template');
 
   // Generate assets (copy from src-tauri/icons or generate placeholders)
-  const assetsCopied = await generateAssets(windowsDir, projectRoot, variants);
+  const assetsCopied = await generateAssets(
+    windowsDir,
+    projectRoot,
+    variants,
+    tauriConfig.bundle?.icon
+  );
 
   // Generate .gitignore
   generateGitignore(windowsDir);

@@ -13,19 +13,32 @@ const TAURI_ICON_MAP: Record<string, string> = {
 
 const VARIANT_SOURCE_CANDIDATES = ['icon.png', 'Square310x310Logo.png', '128x128.png'];
 
-function getTauriIconsDir(projectRoot: string): string {
-  return path.join(projectRoot, 'src-tauri', 'icons');
+// Derive the icons source dir from `bundle.icon` (parent dir of first .png path,
+// resolved relative to `src-tauri/`). Falls back to `src-tauri/icons/`.
+export function resolveTauriIconsDir(projectRoot: string, bundleIcon?: string[]): string {
+  const srcTauriDir = path.join(projectRoot, 'src-tauri');
+  if (bundleIcon && bundleIcon.length > 0) {
+    const firstPng = bundleIcon.find(
+      (p) => typeof p === 'string' && p.toLowerCase().endsWith('.png')
+    );
+    if (firstPng) {
+      const dir = path.dirname(firstPng);
+      return path.isAbsolute(firstPng) ? dir : path.resolve(srcTauriDir, dir);
+    }
+  }
+  return path.join(srcTauriDir, 'icons');
 }
 
 export async function generateAssets(
   windowsDir: string,
   projectRoot?: string,
-  variants?: VariantOptions
+  variants?: VariantOptions,
+  bundleIcon?: string[]
 ): Promise<boolean> {
   const assetsDir = path.join(windowsDir, 'Assets');
   fs.mkdirSync(assetsDir, { recursive: true });
 
-  const tauriIconsDir = projectRoot ? getTauriIconsDir(projectRoot) : null;
+  const tauriIconsDir = projectRoot ? resolveTauriIconsDir(projectRoot, bundleIcon) : null;
   let copiedFromTauri = false;
 
   for (const asset of MSIX_ASSETS) {
@@ -58,7 +71,10 @@ export async function generateAssets(
   }
 
   if (copiedFromTauri) {
-    console.log('  Copied assets from src-tauri/icons');
+    const displayDir = tauriIconsDir
+      ? path.relative(projectRoot ?? process.cwd(), tauriIconsDir) || tauriIconsDir
+      : 'src-tauri/icons';
+    console.log(`  Copied assets from ${displayDir}`);
   } else {
     console.log('  Generated placeholder assets - replace with real icons before publishing');
   }
