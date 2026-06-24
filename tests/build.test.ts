@@ -785,7 +785,28 @@ describe('build command', () => {
     }
   });
 
-  it('passes --makepri when resourceIndex is enabled', async () => {
+  // Makes the mocked execAsync emulate `makepri createconfig` by writing a
+  // priconfig that contains a <packaging> section, so the real merge/strip logic
+  // in generateMergedResourceIndex can run. Optionally records the priconfig
+  // content seen by `makepri new`.
+  function mockMakepri(onNew?: (priconfig: string) => void) {
+    vi.mocked(execAsync).mockImplementation(async (command: string) => {
+      const create = command.match(/createconfig \/cf "([^"]+)"/);
+      if (create) {
+        fs.writeFileSync(
+          create[1],
+          '<resources><packaging><autoResourcePackage>language</autoResourcePackage></packaging></resources>'
+        );
+      }
+      if (command.includes('makepri new')) {
+        const cf = command.match(/\/cf "([^"]+)"/);
+        if (cf && onNew) onNew(fs.readFileSync(cf[1], 'utf-8'));
+      }
+      return { stdout: '', stderr: '' };
+    });
+  }
+
+  it('generates a merged resources.pri and does not delegate --makepri to the CLI', async () => {
     const projectDir = createFullProject();
     const windowsDir = path.join(projectDir, 'src-tauri', 'gen', 'windows');
     fs.writeFileSync(
@@ -801,6 +822,8 @@ describe('build command', () => {
       })
     );
 
+    mockMakepri();
+
     const originalCwd = process.cwd();
     process.chdir(tempDir);
 
@@ -812,20 +835,18 @@ describe('build command', () => {
 
     process.chdir(originalCwd);
 
+    const execCalls = vi.mocked(execAsync).mock.calls.map(([cmd]) => cmd);
+    // makepri is invoked directly with the manifest default language.
+    expect(execCalls.some((cmd) => /makepri createconfig .* \/dq en-us/.test(cmd))).toBe(true);
+    expect(execCalls.some((cmd) => cmd.includes('makepri new'))).toBe(true);
+
+    // The CLI must NOT be asked to (re)generate/split the PRI.
     const cliCalls = vi.mocked(spawnAsync).mock.calls.filter(([cmd]) => cmd === 'msixbundle-cli');
-    expect(
-      cliCalls.some(([, args]) => {
-        const joined = args.join(' ');
-        return (
-          args[0] === '--force' &&
-          joined.includes('--makepri') &&
-          joined.includes('--makepri-default-language en-us')
-        );
-      })
-    ).toBe(true);
+    expect(cliCalls.length).toBeGreaterThan(0);
+    expect(cliCalls.every(([, args]) => !args.includes('--makepri'))).toBe(true);
   });
 
-  it('passes --makepri-keep-config when resourceIndex.keepConfig is true', async () => {
+  it('strips the <packaging> section so languages/scales are not split', async () => {
     const projectDir = createFullProject();
     const windowsDir = path.join(projectDir, 'src-tauri', 'gen', 'windows');
     fs.writeFileSync(
@@ -836,10 +857,14 @@ describe('build command', () => {
         capabilities: { general: ['internetClient'] },
         resourceIndex: {
           enabled: true,
-          keepConfig: true,
         },
       })
     );
+
+    let priconfigAtNew: string | null = null;
+    mockMakepri((content) => {
+      priconfigAtNew = content;
+    });
 
     const originalCwd = process.cwd();
     process.chdir(tempDir);
@@ -852,10 +877,8 @@ describe('build command', () => {
 
     process.chdir(originalCwd);
 
-    expect(spawnAsync).toHaveBeenCalledWith(
-      'msixbundle-cli',
-      expect.arrayContaining(['--makepri-keep-config'])
-    );
+    expect(priconfigAtNew).not.toBeNull();
+    expect(priconfigAtNew).not.toContain('<packaging>');
   });
 
   it('builds normally with resourceIndex enabled', async () => {
@@ -873,6 +896,8 @@ describe('build command', () => {
       })
     );
 
+    mockMakepri();
+
     const originalCwd = process.cwd();
     process.chdir(tempDir);
 
@@ -884,10 +909,7 @@ describe('build command', () => {
 
     process.chdir(originalCwd);
 
-    expect(spawnAsync).toHaveBeenCalledWith(
-      'msixbundle-cli',
-      expect.arrayContaining(['--makepri'])
-    );
+    expect(spawnAsync).toHaveBeenCalledWith('msixbundle-cli', expect.arrayContaining(['--force']));
     expect(processExitSpy).not.toHaveBeenCalledWith(1);
   });
 
