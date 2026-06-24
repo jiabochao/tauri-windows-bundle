@@ -10,6 +10,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "rollup -c",
+    "prepare": "rollup -c",
     "prepublishOnly": "pnpm build",
     "pretest": "pnpm build",
     "test": "vitest run",
